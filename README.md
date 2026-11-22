@@ -1,11 +1,11 @@
-# Structured Product Context skills
+# Structured Product Context skills (DEMO repo with context populated)
 
 A Claude Code workspace that turns a product brief into **structured product context**, all skills are building files from structured context.
 
 
 ## Requirements
 
-- [Claude Code](https://claude.com/claude-code) (CLI, desktop, or IDE extension)
+- [Claude Code](https://claude.com/claude-code) or [Codex](https://openai.com/codex/) (CLI, desktop, or IDE extension) or [GitHub Copilot](https://github.com/features/copilot)
 - Optional: the Atlassian connector for `backlog` (Jira) and `confluence-sync`; `pandoc` and `jq` for `confluence-sync` API mode
 
 ## Quick Start
