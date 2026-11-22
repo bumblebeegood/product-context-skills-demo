@@ -77,8 +77,6 @@ Only proceed once the task is clarified.
   2. A file in the workspace with a `# API Standards` or `# Style Guide` heading.
   3. [references/API-standards.md](references/API-standards.md) — the default, bundled with this skill. Read it in full before composing any story.
 
-  The bundled file is a copy of `.claude/skills/design-api-spec/references/API-standards.md`, so stories and the spec are held to the same standards. If the two differ, tell the user and use the one in `design-api-spec`, which is what the spec will be checked against.
-
   Tell the user which file you will use and confirm it once per session. If none exists, ask the user. Never write a story without standards: method, resource, nesting, pagination and error codes all come from them.
 5. Break down the request:
   - **Actor** — the role from `users/` that performs the operation.
@@ -179,6 +177,16 @@ The system shall allow [user] to [action] [entity] when:
 - **Source:** …
 ```
 
+Every Scope ends with the bullet list. Besides `Method`, `Resource` and `Source`, add these two bullets when they apply:
+
+```markdown
+- **Access:** Public read access without authentication (BR-ACC-01)
+- **Response behavior:** Return the speaker profile and the speaker's talks ordered by start time ascending (BR-PRG-01, BR-PRG-05). Include cancelled talks with `Status` shown (BR-PRG-02).
+```
+
+- `Access` — who may call the operation and whether authentication is required, from the RBAC table in `users/` and the Business Rules. Cite the rule code.
+- `Response behavior` — for a `GET` or a list: what is returned and how it is ordered, filtered or included, from the Business Rules. Cite the rule codes. Omit for operations with no such rule.
+
 Rules:
 
 - Use "The system shall …" phrasing. State the goal, not steps or validations.
@@ -190,32 +198,30 @@ Rules:
 
 ### 3. Entity Attributes & Validations
 
-One H3 sub-section per entity touched, plus one `Parameters` sub-section when the operation has path or query parameters that are not entity attributes.
+The entity files in `domain-entities/` are the single source of truth for attributes. **Link to them; do not copy their attribute tables.** The section has an intro sentence, one bullet per entity touched, and a `Parameters` sub-section when the operation has path or query parameters that are not entity attributes.
 
 ```markdown
 ## Entity Attributes & Validations
+
+The response uses the canonical definitions and validations in these entity files; their attribute names, types, examples, and error messages are not repeated here:
+
+- [Speaker entity](../../../domain-entities/speaker.md) — return the speaker profile attributes.
+- [Talk entity](../../../domain-entities/talk.md) — return the talk attributes needed to identify and schedule the presentations, including `Last updated`.
 
 ### Parameters
 
 | parameter | in | type | mandatory | description |
 |---|---|---|---|---|
 | <name> | path / query | <type> | <Y/N> | <what it represents> |
-
-### <Entity>
-
-| attribute name | type | mandatory | description | limitations/validations | error messages | examples |
-|---|---|---|---|---|---|---|
-| <attr> | <type> | <Y/N> | <what it represents> | <restrictions> | "<message>" | <1–3 values> |
 ```
 
 Rules:
 
-- Only attributes the operation touches: the request-body attributes for `POST` / `PUT`, the filter attributes for a list or search, the attributes returned for a `GET`. Not every attribute of the entity.
-- Copy attribute names, types, validations, error messages and examples from `domain-entities/<entity>.md`. Do not reword them. Write attribute names exactly as in the entity file; the conversion to wire names happens in `design-api-spec`.
-- Do not include IDs.
-- List enum values explicitly. Specify decimal precision for currency / numeric fields.
-- Mark immutability and system-generated fields (`Set by the system; not accepted in the request`).
-- `Parameters` follow the standards exactly (e.g. pagination parameters for every collection). Mark each as `path` or `query`.
+- One bullet per entity the operation touches: a link to `domain-entities/<entity>.md` (relative path `../../../domain-entities/<entity>.md` from the story file), then a short note saying **which part of the entity this operation uses**: the request-body attributes for `POST` / `PUT`, the filter attributes for a list or search, the attributes returned for a `GET`.
+- Do not reproduce attribute names, types, validations, error messages or examples in the story. The conversion to wire names happens in `design-api-spec`, which reads the entity file.
+- Write in the note only what is specific to this operation and not in the entity file: which attributes are in or out, which are system-generated or not accepted in the request (`Set by the system; not accepted in the request`), immutability, and decimal precision for currency / numeric fields when the entity file does not state it.
+- If the operation needs an attribute or validation the entity file lacks, do not add it to the story. Flag it in Inferred Suggestions and suggest `context-management`.
+- `Parameters` are written out in full, because they are not in any entity file. They follow the standards exactly (e.g. pagination parameters for every collection). Mark each as `path` or `query`. Do not include a parameter for an ID the entity already defines, other than the path ID.
 - Omit the `Parameters` sub-section when there are none.
 
 ---
@@ -262,7 +268,55 @@ Rules:
 
 ---
 
-### 6. Inferred Suggestions
+### 6. Consumer Considerations
+
+```markdown
+## Consumer Considerations
+
+- Omit optional attributes when they have no value; do not emit them as `null`.
+- Consumers must tolerate unknown enum values and additive response fields.
+- Consumers should use each talk's `Last updated` value to recognize potentially stale schedule data.
+- Consumers should handle standard `406`, `429`, and `5xx` responses according to the API standards, including `Retry-After` where supplied.
+```
+
+What an API consumer needs to know to integrate safely, beyond the happy path. It is addressed to the consumer, so each bullet is a behaviour the consumer must expect or handle.
+
+Rules:
+
+- Bullets only, each one stating an exact behaviour. No inferred behaviour: every bullet traces to the API standards, the entity files or a Business Rule.
+- Cover the categories that apply: optional and omitted attributes, forward compatibility (unknown enum values, additive fields), staleness and caching signals (`Last updated`, `ETag`), external links that may be unavailable, retry and rate-limit handling.
+- The generic `406`, `429` and `5xx` handling is mentioned here once, as a consumer duty. Do not add those statuses to Error / Edge Cases.
+- Write `TBD` if the standards and context give nothing to say. Do not drop the heading.
+
+---
+
+### 7. Open Design Questions
+
+```markdown
+## Open Design Questions
+
+- Should all of a speaker's talks be embedded in this response, or exposed through a separately paginated `GET /speakers/{speakerId}/talks` collection?
+- Should this read endpoint support `ETag` and conditional GET for consumers that cache speaker profiles?
+```
+
+The design decisions the PM or API designer must make before the story is accepted. The context and the standards leave them open; the story does not assume an answer.
+
+Rules:
+
+- Every item is phrased as a question, ends with `?`, and names the concrete options. If the reasoning is not obvious from the question, add it after the question in one clause.
+- Never put an unconfirmed decision in Scope or in any other section.
+- Do not drop the heading. If there are no open questions, write `None.`
+
+Categories to consider:
+
+- A `Method` or `Resource` the standards do not settle (e.g. deactivate as `PUT` of a status or as `DELETE`).
+- Embedded vs separate sub-resource, full vs summary representation.
+- Filters, sort order, default values, retention windows.
+- Idempotency, optimistic concurrency, `ETag` and conditional requests.
+
+---
+
+### 8. Inferred Suggestions
 
 ```markdown
 ## Inferred Suggestions
@@ -271,27 +325,28 @@ Rules:
 
 | Item | Reasoning |
 |---|---|
-| <inferred item or open question> | <why it is needed or why it was inferred> |
+| <inferred item or mismatch> | <why it was inferred or why it does not fit> |
 ```
+
+Everything the story needs that the source does **not** state, and everything in the user's input that does not fit the skill or the context. This is the only place where the model's own inference or invention may appear.
 
 Rules:
 
 - The disclaimer line is mandatory.
 - Every row has reasoning.
 - Phrase as proposals or questions, not statements.
-- This is the **only** section where inference is allowed. Never present an inference as a fact in any other section.
+- Never present an inference as a fact in any other section. If you catch yourself writing something the source does not support, move it here.
+- Omit the entire section if nothing was inferred and nothing in the input failed to fit.
 
 Categories to consider:
 
-- A `Method` or `Resource` the standards do not settle (e.g. deactivate as `PUT` of a status or as `DELETE`).
 - Operations the requirement implies but does not state (the matching `GET` after a `POST`).
 - Missing entity attributes or `TBD` values in `domain-entities/`.
 - Unstated business rules.
-- Filters, sort order, default values, retention windows.
 - Format conventions (date, currency, locale).
-- Idempotency and optimistic concurrency.
 - Permission gaps in the RBAC table.
 - Notifications triggered by the operation.
+- User input that conflicts with the Product Context, uses a different term, asks for several operations in one story, or asks for something the skill does not cover (e.g. response schemas, implementation details).
 
 ---
 
@@ -302,10 +357,12 @@ To avoid duplication:
 | Concern                               | Section                         |
 | ------------------------------------- | ------------------------------- |
 | What the operation is and why         | Scope                           |
-| What data exists and its rules        | Entity Attributes & Validations |
+| What data exists and its rules        | Entity Attributes & Validations (a link to the entity file) |
 | What if something goes wrong          | Error / Edge Cases              |
 | What is explicitly excluded           | Out of Scope                    |
-| What is inferred or open              | Inferred Suggestions            |
+| What the consumer must expect or handle | Consumer Considerations       |
+| What design decision is open          | Open Design Questions           |
+| What is inferred, or does not fit     | Inferred Suggestions            |
 
 If two sections would say the same thing, the higher-up section wins; the lower one references or omits.
 
@@ -319,8 +376,9 @@ Avoid uncertain language in Scope and in validations: "or", "optional", "maybe",
 2. **One story, one operation.** One action verb, one method, one resource.
 3. **Follow the standards religiously.** Method, resource, nesting, pluralization and pagination come from the API standards. The stories are the first enforcement of the standards.
 4. **Use domain language exactly.** Entity and attribute names come from `domain-entities/`; roles come from `users/`; rules are cited by code from `Business-rules.md`. Do not invent a synonym.
-5. **Nest resources per the domain relations**, within the standards' nesting limit.
-6. **Don't invent requirements.** If the requirement does not mention delete or update, do not add them. If something looks missing, flag it in Inferred Suggestions; do not add it silently.
+5. **Link, don't copy.** Entity attributes live in `domain-entities/`. The story links to the entity file and states only what this operation uses, so a change to an entity never leaves a stale copy in a story.
+6. **Nest resources per the domain relations**, within the standards' nesting limit.
+7. **Don't invent requirements.** If the requirement does not mention delete or update, do not add them. If something looks missing, flag it in Inferred Suggestions; do not add it silently.
 
 ## References
 
@@ -334,7 +392,7 @@ Avoid uncertain language in Scope and in validations: "or", "optional", "maybe",
 | Status Codes, Errors | Error / Edge Cases → the HTTP status in System Behavior (`400` vs `409`, `404` only for a missing single resource, empty collection is `200`) |
 | Security | Error / Edge Cases → `401` / `403` rows only when the API requires authentication |
 | Idempotency, Responses, Properties | Error / Edge Cases (duplicates, concurrency, omitted optional fields) |
-| SHOULD / MAY items (`fields`, `sort` / `order`, `expand`, conditional GET, `ETag`) | Inferred Suggestions, unless the requirement asks for them |
+| SHOULD / MAY items (`fields`, `sort` / `order`, `expand`, conditional GET, `ETag`) | Open Design Questions, unless the requirement asks for them; `ETag` and staleness signals also in Consumer Considerations once decided |
 
 ## Example
 
@@ -353,15 +411,9 @@ The system shall allow a Rules Manager to create a device type in the catalog.
 
 ## Entity Attributes & Validations
 
-### Device Type
+The request uses the canonical definitions and validations in this entity file; its attribute names, types, examples, and error messages are not repeated here:
 
-| attribute name | type | mandatory | description | limitations/validations | error messages | examples |
-|---|---|---|---|---|---|---|
-| model | String | Y | Name of the type or model family | Searchable by Operators | "Enter the model name." | Pixel 8 XL |
-| category | String (enum) | Y | Product category | Initial values: Android phones, iPhone | "Select a category from the list." | iPhone |
-| make | String | Y | Manufacturer / brand | Searchable by Operators | "Enter the manufacturer." | Google |
-| minimum manufacture year | Integer | Y | Oldest manufacture year accepted | 4-digit year | "Enter a 4-digit minimum manufacture year." | 2021 |
-| status | String (enum) | Y | Lifecycle state in the catalog | Set by the system to Active; not accepted in the request | — | Active |
+- [Device Type entity](../../../domain-entities/device-type.md) — accept `model`, `category`, `make` and `minimum manufacture year`. `status` is set by the system to Active and is not accepted in the request.
 
 ## Error / Edge Cases
 
@@ -370,11 +422,12 @@ The system shall allow a Rules Manager to create a device type in the catalog.
 | Mandatory attribute missing or invalid | `400`; no device type is created | "Enter a 4-digit minimum manufacture year." | Consumer corrects the field and resubmits |
 | Caller does not hold the Rules Manager role | `403`; no device type is created | TBD | Employee requests the role from an Admin |
 
-## Inferred Suggestions
+## Consumer Considerations
 
-> The following items are inferred or proposed — they are **not** stated in the source context. Confirm or revise before acceptance.
+- The response omits optional attributes that have no value; it does not emit them as `null`.
+- Consumers must tolerate unknown enum values and additive response fields.
 
-| Item | Reasoning |
-|---|---|
-| Should a device type with the same model, make and category return `409`? | The entity file defines no uniqueness rule; the standards require a defined duplicate behaviour for `POST`. |
+## Open Design Questions
+
+- Should a device type with the same model, make and category return `409`? The entity file defines no uniqueness rule; the standards require a defined duplicate behaviour for `POST`.
 ```
