@@ -12,36 +12,17 @@ The system shall allow an Attendee to get a speaker's profile and the talks that
 
 ## Entity Attributes & Validations
 
+The response uses the canonical definitions and validations in these entity files; their attribute names, types, examples, and error messages are not repeated here:
+
+- [Speaker entity](../../../domain-entities/speaker.md) — return the speaker profile attributes.
+- [Talk entity](../../../domain-entities/talk.md) — return the talk attributes needed to identify, understand, and schedule the speaker's presentations, including `Last updated`.
+- [Track entity](../../../domain-entities/track.md) — return the talk's track reference according to the entity definition.
+
 ### Parameters
 
 | parameter | in | type | mandatory | description |
 |---|---|---|---|---|
 | speakerId | path | UUID | Y | The identifier of the speaker whose profile is requested. |
-
-### Speaker
-
-| attribute name | type | mandatory | description | limitations/validations | error messages | examples |
-|---|---|---|---|---|---|---|
-| Name | String | Y | Full name of the speaker; speakers are listed alphabetically by it | 1–100 characters after trimming | "Speaker name is required and must be 1–100 characters." | "Emmanuel Paraskakis" |
-| Title | String | Y | Professional title | 1–100 characters | "Speaker title is required and must be 1–100 characters." | "API Consultant" |
-| Company | String | N | Employer or organisation | Up to 100 characters | "Company must be at most 100 characters." | "Level 250" |
-| Bio | String | N | Short biography | Up to 2000 characters | "Bio must be at most 2000 characters." | "API consultant and educator specializing in API strategy and design" |
-| Photo URL | URL | N | Link to the speaker's photo | Absolute http or https URL, up to 2048 characters | "Photo URL must be a valid http or https URL." | "https://example.com/photos/emmanuel.jpg" |
-| Website | URL | N | Personal site or social profile, for networking | Absolute http or https URL, up to 2048 characters | "Website must be a valid http or https URL." | "https://www.linkedin.com/in/example" |
-
-### Talk
-
-| attribute name | type | mandatory | description | limitations/validations | error messages | examples |
-|---|---|---|---|---|---|---|
-| Title | String | Y | Title of the talk | 1–120 characters after trimming | "Talk title is required and must be 1–120 characters." | "AI-Driven API Design with OpenAPI" |
-| Description | String | Y | What the talk covers | 1–2000 characters | "Talk description is required and must be at most 2000 characters." | "How AI assistants change the way we design and review OpenAPI definitions." |
-| Format | String (enum) | Y | Kind of session | One of `Keynote`, `Talk`, `Workshop`, `Panel`; duration limits per BR-TLK-04 | "Format must be one of Keynote, Talk, Workshop, Panel." | "Talk", "Workshop" |
-| Status | String (enum) | Y | Lifecycle state | One of `Scheduled`, `Cancelled`; cannot return from `Cancelled` (BR-TLK-08) | "Status must be Scheduled or Cancelled." / "A cancelled talk cannot be reinstated." | "Scheduled" |
-| Room | String | Y | Room or stage where the talk takes place (free text) | 1–60 characters after trimming | "Room is required and must be 1–60 characters." | "PRO Stage" |
-| Track | Reference (Track) | Y | The one track the talk belongs to | Must reference an existing track (BR-TLK-01) | "Track is required and must refer to an existing track." | The "OpenAPI Summit" track |
-| Date | Date | Y | Calendar date of the talk in the venue time zone (America/Los_Angeles), RFC 3339 full-date | Must equal the venue-local date of Start time and End time (BR-TLK-05, BR-TIM-02) | "Date must be a valid date matching the start and end times in the venue time zone." | "2026-02-20" |
-| Start time | Date/time | Y | When the talk starts, RFC 3339 in UTC | Must end in `Z`; before End time (BR-TIM-01, BR-TLK-03) | "Start time must be a valid UTC date-time, for example 2026-02-20T21:30:00Z." | "2026-02-20T21:30:00Z" |
-| End time | Date/time | Y | When the talk ends, RFC 3339 in UTC | Must end in `Z`; after Start time; duration within format limits (BR-TIM-01, BR-TLK-03, BR-TLK-04) | "End time must be a valid UTC date-time later than the start time." | "2026-02-20T22:15:00Z" |
 
 ## Error / Edge Cases
 
@@ -52,3 +33,16 @@ The system shall allow an Attendee to get a speaker's profile and the talks that
 | The speaker has no talks | Return `200 OK` with the profile and an empty talks collection; do not return `404`. | "talks: []" | Show the profile and indicate that no talks are currently listed. |
 | A listed talk is cancelled | Return `200 OK` with the talk and `Status` set to `Cancelled` (BR-PRG-02). | "Status: Cancelled" | Show the cancellation and avoid treating the talk as an available meeting opportunity. |
 
+## Consumer Considerations
+
+- Omit optional speaker attributes when they have no value; do not emit them as `null`.
+- Consumers must tolerate unknown enum values and additive response fields.
+- Consumers should use each talk's `Last updated` value to recognize potentially stale schedule data.
+- Photo and website URLs are optional external links and may be unavailable to the consumer.
+- Consumers should handle standard `406`, `429`, and `5xx` responses according to the API standards, including `Retry-After` where supplied.
+
+## Open Design Questions
+
+- Should all of a speaker's talks be embedded in this response, or should the talks be exposed through a separately paginated `GET /speakers/{speakerId}/talks` collection?
+- Should the embedded talks contain the full [Talk entity](../../../domain-entities/talk.md) representation or a smaller summary?
+- Should this read endpoint support `ETag` and conditional GET for consumers that cache speaker profiles?
